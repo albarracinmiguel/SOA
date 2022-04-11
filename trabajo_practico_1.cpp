@@ -7,17 +7,19 @@
 #define PIR_PIN 12
 #define LED_RGB_ROJO_PIN 11
 #define LED_RGB_VERDE_PIN 10
-
 #define SERVO_PIN 3
 #define LED_VERDE_PIN 2
-
 #define FOTOSENSOR_PIN A0
 
-Servo servo;
+#define SENSOR_LUZ_MINIMO 713  // valor minimo del sensor de luz de ambiente
+#define SENSOR_LUZ_MAXIMO 1023 // valor maximo del sensor de luz de ambiente
+#define BRILLO_MINIMO 0        // brillo minimo de la para led RGB pwm
+#define BRILLO_MAXIMO 255      // brillo maximo de la para led RGB pwm
+Servo servo;                   // variable para el servo
 
 // SECTOR LEDS
 #define LED_TIRA_CANT 4 // NUMERO DE PIXELES TOTALES
-Adafruit_NeoPixel tiraLED = Adafruit_NeoPixel(LED_TIRA_CANT, LED_TIRA_PIN, NEO_RGB + NEO_KHZ800);
+Adafruit_NeoPixel tiraLED = Adafruit_NeoPixel(LED_TIRA_CANT, LED_TIRA_PIN, NEO_RGB + NEO_KHZ800); // objeto para el led de la tira
 int previaLecturaLuz = -1;
 
 // SECTOR TECLADO
@@ -31,9 +33,7 @@ char keys[FILAS][COLUMNAS] = {
 
 byte pinesFilas[FILAS] = {9, 8, 7, 0};    // pines correspondientes a las filas
 byte pinesColumnas[COLUMNAS] = {6, 5, 4}; // pines correspondientes a las columnas
-
-Keypad teclado = Keypad(makeKeymap(keys), pinesFilas, pinesColumnas, FILAS, COLUMNAS); // crea objeto
-
+Keypad teclado = Keypad(makeKeymap(keys), pinesFilas, pinesColumnas, FILAS, COLUMNAS); // crea objeto teclado con las configuraciones usando Keypad Library
 char TECLA;                     // almacena la tecla presionada
 char CLAVE[5];                  // almacena en un array 9digitos ingresados
 char CLAVE_MAESTRA[5] = "1234"; // almacena en un array la contraseña maestra
@@ -42,21 +42,20 @@ byte INDICE = 0;                // indice del array
 // Setea la luminosidad de los leds
 void setBrilloTira(int oscuridadAmbiental)
 {
-  int brillo = map(oscuridadAmbiental, 713, 1023, 0, 255); // mapea la brillo deacuerdo a la oscuridad del ambiente
-  for (int i = 0; i < LED_TIRA_CANT; i++)                  // recorre todos los leds
+  int brillo = map(oscuridadAmbiental, SENSOR_LUZ_MINIMO, SENSOR_LUZ_MAXIMO, BRILLO_MINIMO, BRILLO_MAXIMO); // mapea la brillo deacuerdo a la oscuridad del ambiente
+  for (int i = 0; i < LED_TIRA_CANT; i++)                                                                   // recorre todos los leds
   {
-    tiraLED.setPixelColor(i, tiraLED.Color(brillo, 0, 0)); // setea el color verde con brillo
+    tiraLED.setPixelColor(i, tiraLED.Color(brillo, BRILLO_MINIMO, BRILLO_MINIMO)); // setea el color verde con brillo el brillo adecuado
   }
   tiraLED.show(); // muestra los cambios
 }
 
-// Modo de espera led rgb titilando en amarillo
+// Modo de espera led rgb en amarillo verdoso
 // TODO: todavia no se como hacer la maquina de estados pero se me ocurren 3 estados: en modo de espera (amarillo), auto pasando hasta el PIR O TIMEOUT (verde), contraseña incorrecta (rojo)
 void modoDeEspera()
 {
-
-  digitalWrite(LED_RGB_VERDE_PIN, HIGH); // seteo el brillo del verde
-  analogWrite(LED_RGB_ROJO_PIN, 240);    // seteo el brillo del rojo
+  digitalWrite(LED_RGB_VERDE_PIN, HIGH); // seteo el brillo del verde en digital
+  analogWrite(LED_RGB_ROJO_PIN, 240);    // seteo el brillo del rojo en analogico
   delayMicroseconds(1000);               // espero 1ms para que se note la animacion
 }
 
@@ -66,32 +65,32 @@ void setup()
   tiraLED.show();          // inicializa todos los pines en 'off'
   servo.attach(SERVO_PIN); // inicializa el servo
   Serial.begin(9600);
-  pinMode(PIR_PIN, INPUT);
-  pinMode(LED_VERDE_PIN, OUTPUT);
-  pinMode(LED_RGB_ROJO_PIN, OUTPUT);
-  pinMode(LED_RGB_VERDE_PIN, OUTPUT);
+  pinMode(PIR_PIN, INPUT);            // inicializa el pin del PIR
+  pinMode(LED_VERDE_PIN, OUTPUT);     // inicializa el pin del led verde
+  pinMode(LED_RGB_ROJO_PIN, OUTPUT);  // inicializa el pin del led RGB rojo
+  pinMode(LED_RGB_VERDE_PIN, OUTPUT); // inicializa el pin del led RGB verde
 }
 
 void loop()
 {
   if (previaLecturaLuz != analogRead(FOTOSENSOR_PIN)) // TODO: remover esta condicion y variable previaLecturaLuz y usar interrupcion
   {
-    previaLecturaLuz = analogRead(FOTOSENSOR_PIN);
-    setBrilloTira(analogRead(FOTOSENSOR_PIN));
+    previaLecturaLuz = analogRead(FOTOSENSOR_PIN); // TODO: remover esta variable previaLecturaLuz y usar interrupcion
+    setBrilloTira(analogRead(FOTOSENSOR_PIN));     // cambia color de la tira de leds
   }
 
-  modoDeEspera();
+  modoDeEspera(); // modo de espera para la el led RGB
 
-  int PIRvalue = digitalRead(PIR_PIN);
-  if (PIRvalue == HIGH)
+  int PIRvalue = digitalRead(PIR_PIN); // leo el valor del PIR
+  if (PIRvalue == HIGH)                // si el valor del pin es HIGH
   {
-    digitalWrite(LED_VERDE_PIN, HIGH);
-    servo.write(90); // abre la puerta
+    digitalWrite(LED_VERDE_PIN, HIGH); // seteo el led verde en HIGH
+    servo.write(90);                   // abre la puerta
   }
   else
   {
-    digitalWrite(LED_VERDE_PIN, LOW);
-    servo.write(0); // cierra la puerta
+    digitalWrite(LED_VERDE_PIN, LOW); // seteo el led verde en LOW
+    servo.write(0);                   // cierra la puerta
   }
 
   TECLA = teclado.getKey(); // obtiene tecla presionada y asigna una variable
@@ -109,6 +108,6 @@ void loop()
     else
       Serial.println(" Incorrecto"); // imprime en monitor serial que es incorrecta la clave
 
-    INDICE = 0;
+    INDICE = 0; // resetea el indice para guardar una nueva clave
   }
 }
