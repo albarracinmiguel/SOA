@@ -44,10 +44,11 @@
 // OTRAS CONSTANTES:
 //----------------------------------------------
 #define UMBRAL_DIFERENCIA_TIMEOUT 50
-#define UMBRAL_DIFERENCIA_TIMEOUT_3 3000
-#define UMBRAL_DIFERENCIA_TIMEOUT_10 10000
+#define UMBRAL_DIFERENCIA_TIMEOUT_CORTO 3 * 1000
+#define UMBRAL_DIFERENCIA_TIMEOUT_LARGO 5 * 1000
+#define SERIAL_BAUD_RATE 9600
 
-#define SENSOR_LUZ_MINIMO 713  // valor minimo del sensor de luz de ambiente
+#define SENSOR_LUZ_UMBRAL 800  // valor del umbral para prender o apagar la tira led
 #define SENSOR_LUZ_MAXIMO 1023 // valor maximo del sensor de luz de ambiente
 #define BRILLO_MINIMO 0        // brillo minimo de la para led RGB pwm
 #define BRILLO_MAXIMO 255      // brillo maximo de la para led RGB pwm
@@ -77,42 +78,53 @@ enum events
   EV_CLAVE_CORRECTA,
   EV_CLAVE_INCORRECTA,
   EV_CONTINUE,
-  EV_TIMEOUT_3,
-  EV_TIMEOUT_10,
+  EV_TIMEOUT_CORTO,
+  EV_TIMEOUT_LARGO,
+  EV_CAMBIO_DE_LUZ,
 
 } new_event;
-String events_s[] = {"EV_PIR_DETECTADO", "EV_CLAVE_CORRECTA", "EV_CLAVE_INCORRECTA", "EV_CONTINUE", "EV_TIMEOUT_3", "EV_TIMEOUT_10"};
+String events_s[] = {"EV_PIR_DETECTADO", "EV_CLAVE_CORRECTA", "EV_CLAVE_INCORRECTA", "EV_CONTINUE", "EV_TIMEOUT_CORTO", "EV_TIMEOUT_LARGO", "EV_CAMBIO_DE_LUZ"};
 
 #define MAXSTATES 8
-#define MAXEVENTS 6
+#define MAXEVENTS 7
 
 typedef void (*transition)();
 transition state_table[MAXSTATES][MAXEVENTS] = {
-    // PIR_DETECTADO CLAVE_CORRECTA CLAVE_INCORRECTA CONTINUE TO3 TO10
-    {error, error, error, init_, none, none},                           // STATE INIT
-    {autoSaliendo, autoEntrando, noAutorizado, modoEspera, none, none}, // STATE ESPERA
-    {error, error, error, none, modoEspera, none},                      // STATE NO_AUTORIZADO
-    {autoAdentro, none, none, none, none, none},                        // STATE AUTO_ENTRANDO
-    {none, error, error, modoEspera, none, none},                       // STATE AUTO_ADENTRO
-    {autoSaliendo, error, error, none, none, autoAfuera},               // STATE AUTO_SALIENDO
-    {autoSaliendo, error, error, modoEspera, none, none},               // STATE AUTO_AFUERA
-    {error, error, error, error, error, error}                          // STATE ERROR
+    // PIR_DETECTADO CLAVE_CORRECTA CLAVE_INCORRECTA CONTINUE TO3 TO10 CAMBIO_DE_LUZ
+    {error, error, error, init_, none, none, none},                                    // STATE INIT
+    {autoSaliendo, autoEntrando, noAutorizado, modoEspera, none, none, modificarTira}, // STATE ESPERA
+    {error, error, error, none, modoEspera, none, modificarTira},                      // STATE NO_AUTORIZADO
+    {autoAdentro, none, none, none, none, none, modificarTira},                        // STATE AUTO_ENTRANDO
+    {none, error, error, modoEspera, none, none, modificarTira},                       // STATE AUTO_ADENTRO
+    {autoSaliendo, error, error, none, none, autoAfuera, modificarTira},               // STATE AUTO_SALIENDO
+    {autoSaliendo, error, error, modoEspera, none, none, modificarTira},               // STATE AUTO_AFUERA
+    {error, error, error, error, error, error, error}                                  // STATE ERROR
 };
 
-long lct;
-long lct3;
-long lct10;
+long lct;      // variable para el contador de tiempo asociado al evento continue
+long lctCorto; // variable para el timeout de 3 segundos inicializada en 0 porque no va a correr a no ser que sea necesaria
+long lctLargo; // variable para el timeout de 10 segundos inicializada en 0 porque no va a correr a no ser que sea necesaria
 
 bool timeout;
-bool timeout3;
-bool timeout10;
+bool timeoutCorto;
+bool timeoutLargo;
 
 //----------------------------------------------
 
 // SECTOR LEDS
-// NUMERO DE PIXELES TOTALES
-Adafruit_NeoPixel tiraLED = Adafruit_NeoPixel(LED_TIRA_CANT, LED_TIRA_PIN, NEO_RGB + NEO_KHZ800); // objeto para el led de la tira
 int previaLecturaLuz = -1;
+
+#define APAGADO 0
+#define PRENDIDO 1
+struct stTiraLED
+{
+  Adafruit_NeoPixel LEDs; // objeto para el led de la tira
+  int estado;
+};
+stTiraLED tira = {Adafruit_NeoPixel(LED_TIRA_CANT, LED_TIRA_PIN, NEO_RGB + NEO_KHZ800), APAGADO};
+
+//----------------------------------------------
+
 int brilloPrevioLedAmarillo = 0;
 
 // SECTOR TECLADO
@@ -132,17 +144,6 @@ char CLAVE[5];                                                                  
 char CLAVE_MAESTRA[5] = "1234";                                                        // almacena en un array la contraseña maestra
 byte INDICE = 0;                                                                       // indice del array
 
-// Setea la luminosidad de los leds
-void setBrilloTira(int oscuridadAmbiental)
-{
-  int brillo = map(oscuridadAmbiental, SENSOR_LUZ_MINIMO, SENSOR_LUZ_MAXIMO, BRILLO_MINIMO, BRILLO_MAXIMO); // mapea la brillo deacuerdo a la oscuridad del ambiente
-  for (int i = 0; i < LED_TIRA_CANT; i++)                                                                   // recorre todos los leds
-  {
-    tiraLED.setPixelColor(i, tiraLED.Color(brillo, BRILLO_MINIMO, BRILLO_MINIMO)); // setea el color verde con brillo el brillo adecuado
-  }
-  tiraLED.show(); // muestra los cambios
-}
-
 // Modo de espera led rgb en amarillo verdoso
 // TODO: todavia no se como hacer la maquina de estados pero se me ocurren 3 estados: en modo de espera (amarillo), auto pasando hasta el PIR O TIMEOUT (verde), contraseña incorrecta (rojo)
 void modoDeEspera()
@@ -157,10 +158,10 @@ void modoDeEspera()
 
 void do_init()
 {
-  Serial.begin(9600);
+  Serial.begin(SERIAL_BAUD_RATE);
 
-  tiraLED.begin();         // inicializa la libreria
-  tiraLED.show();          // inicializa todos los pines en 'off'
+  tira.LEDs.begin();       // inicializa la libreria
+  tira.LEDs.show();        // inicializa todos los pines en 'off'
   servo.attach(SERVO_PIN); // inicializa el servo
 
   pinMode(PIR_PIN, INPUT);            // inicializa el pin del PIR
@@ -174,8 +175,6 @@ void do_init()
 
   timeout = false;
   lct = millis();
-  lct3 = millis();
-  lct10 = millis();
 }
 
 void bajarBarrera()
@@ -190,11 +189,22 @@ void subirBarrera()
 
 void apagarTiraLed()
 {
+  tira.estado = APAGADO;
   for (int i = 0; i < LED_TIRA_CANT; i++)
   {
-    tiraLED.setPixelColor(i, tiraLED.Color(0, 0, 0)); // seteo el color verde con brillo el brillo adecuado
+    tira.LEDs.setPixelColor(i, tira.LEDs.Color(0, 0, 0)); // seteo el color verde con brillo el brillo adecuado
   }
-  tiraLED.show(); // muestra los cambios
+  tira.LEDs.show(); // muestra los cambios
+}
+
+void prenderTiraLed()
+{
+  tira.estado = PRENDIDO;
+  for (int i = 0; i < LED_TIRA_CANT; i++)
+  {
+    tira.LEDs.setPixelColor(i, tira.LEDs.Color(0, 255, 0)); // seteo el color verde con brillo el brillo adecuado
+  }
+  tira.LEDs.show(); // muestra los cambios
 }
 
 void apagarIndicadorDeEntradaSalida()
@@ -233,6 +243,11 @@ void ledRGBAmarilloTitilante()
   digitalWrite(LED_RGB_AZUL_PIN, LOW);
 }
 
+void modificarTira()
+{
+  !tira.estado ? prenderTiraLed() : apagarTiraLed();
+}
+
 //----------------------------------------------
 
 void init_()
@@ -263,7 +278,7 @@ void autoEntrando() // aka contrasenia correcta
 
 void noAutorizado() // aka contrasenia incorrecta
 {
-  lct3 = millis(); // reinicio el timeout de 3 segundos
+  lctCorto = millis(); // reinicio el timeout de 3 segundos
   ledRGBRojo();
   current_state = ST_NO_AUTORIZADO;
 }
@@ -278,7 +293,7 @@ void autoAdentro()
 
 void autoSaliendo()
 {
-  lct10 = millis(); // reinicio el timeout de 10 segundos esperando que salga el auto
+  lctLargo = millis(); // reinicio el timeout de 10 segundos esperando que salga el auto
   subirBarrera();
   encenderIndicadorDeEntradaSalida();
   current_state = ST_AUTO_SALIENDO;
@@ -349,7 +364,8 @@ bool verificarSensorLuz()
   if (previaLecturaLuz != analogRead(FOTOSENSOR_PIN)) // TODO: remover esta condicion y variable previaLecturaLuz y usar interrupcion
   {
     previaLecturaLuz = analogRead(FOTOSENSOR_PIN); // TODO: remover esta variable previaLecturaLuz y usar interrupcion
-    setBrilloTira(analogRead(FOTOSENSOR_PIN));     // cambia color de la tira de leds
+    new_event = EV_CAMBIO_DE_LUZ;                  // Evento de luz detectada
+    return true;
   }
 }
 
@@ -357,28 +373,26 @@ void get_new_event()
 {
   long ct = millis();
   int diferencia = (ct - lct);
-  int diferencia3 = (ct - lct3);
-  int diferencia10 = (ct - lct10);
+  int diferenciaCorta = (ct - lctCorto);
+  int diferenciaLarga = (ct - lctLargo);
 
   timeout = (diferencia > UMBRAL_DIFERENCIA_TIMEOUT) ? true : false;
-  timeout3 = (diferencia3 > UMBRAL_DIFERENCIA_TIMEOUT_3) ? true : false;
-  timeout10 = (diferencia10 > UMBRAL_DIFERENCIA_TIMEOUT_10) ? true : false;
+  timeoutCorto = (diferenciaCorta > UMBRAL_DIFERENCIA_TIMEOUT_CORTO) ? true : false;
+  timeoutLargo = (diferenciaLarga > UMBRAL_DIFERENCIA_TIMEOUT_LARGO) ? true : false;
 
-  if (timeout3)
+  if (timeoutCorto)
   {
-    timeout3 = false;
-    lct3 = ct;
-
-    new_event = EV_TIMEOUT_3;
+    timeoutCorto = false;
+    lctCorto = ct;
+    new_event = EV_TIMEOUT_CORTO; // genero el evento de timeout 3 segundos
     return;
   }
 
-  if (timeout10)
+  if (timeoutLargo)
   {
-    timeout10 = false;
-    lct10 = ct;
-
-    new_event = EV_TIMEOUT_10;
+    timeoutLargo = false;
+    lctLargo = ct;
+    new_event = EV_TIMEOUT_LARGO; // genero el evento de timeout 10 segundos
     return;
   }
 
@@ -388,7 +402,7 @@ void get_new_event()
     timeout = false;
     lct = ct;
 
-    if (verificarClave() == true || verificarSensorPIR() == true)
+    if (verificarClave() == true || verificarSensorPIR() == true || verificarSensorLuz() == true)
     {
       return;
     }
@@ -399,11 +413,10 @@ void get_new_event()
 
 void maquinaEstadosEstacionamiento()
 {
-  verificarSensorLuz();
   get_new_event();
   if ((new_event >= 0) && (new_event < MAXEVENTS) && (current_state >= 0) && (current_state < MAXSTATES))
   {
-    if (new_event != EV_CONTINUE && new_event != EV_TIMEOUT_3 && new_event != EV_TIMEOUT_10)
+    if (new_event != EV_CONTINUE)
     {
       DebugPrintEstado(states_s[current_state], events_s[new_event]);
     }
