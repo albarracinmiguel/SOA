@@ -36,24 +36,23 @@
 #define LED_RGB_ROJO_PIN 11
 #define LED_RGB_VERDE_PIN 10
 #define LED_RGB_AZUL_PIN 9
-#define SERVO_PIN 3
-#define LED_VERDE_PIN 2
+#define SERVO_PIN 6
+#define LED_VERDE_PIN 8
 #define FOTOSENSOR_PIN A0
+#define RESET_PIN 3
+#define CAMBIAR_CLAVE_PIN 2
 //----------------------------------------------
 
 // OTRAS CONSTANTES:
 //----------------------------------------------
-#define UMBRAL_DIFERENCIA_TIMEOUT 50
+#define UMBRAL_DIFERENCIA_TIMEOUT 40
 #define UMBRAL_DIFERENCIA_TIMEOUT_CORTO 3 * 1000
 #define UMBRAL_DIFERENCIA_TIMEOUT_LARGO 5 * 1000
 #define SERIAL_BAUD_RATE 9600
 
-#define SENSOR_LUZ_UMBRAL 800  // valor del umbral para prender o apagar la tira led
-#define SENSOR_LUZ_MAXIMO 1023 // valor maximo del sensor de luz de ambiente
-#define BRILLO_MINIMO 0        // brillo minimo de la para led RGB pwm
-#define BRILLO_MAXIMO 255      // brillo maximo de la para led RGB pwm
-#define LED_TIRA_CANT 4        // cantidad de leds que tiene la tira
-Servo servo;                   // variable para el servo
+#define SENSOR_LUZ_UMBRAL 800 // valor del umbral para prender o apagar la tira led
+#define LED_TIRA_CANT 4       // cantidad de leds que tiene la tira
+Servo servo;                  // variable para el servo
 //----------------------------------------------
 
 // SECTOR MAQUINA DE ESTADOS:
@@ -68,12 +67,12 @@ enum states
   ST_AUTO_ADENTRO,
   ST_AUTO_SALIENDO,
   ST_AUTO_AFUERA,
-  ST_ERROR
+  ST_ERROR,
+  ST_CAMBIANDO_CLAVE,
 } current_state;
-String states_s[] = {"ST_INIT", "ST_ESPERA", "ST_NO_AUTORIZADO", "ST_AUTO_ENTRANDO", "ST_AUTO_ADENTRO", "ST_AUTO_SALIENDO", "ST_AUTO_AFUERA", "ST_ERROR"};
+String states_s[] = {"ST_INIT", "ST_ESPERA", "ST_NO_AUTORIZADO", "ST_AUTO_ENTRANDO", "ST_AUTO_ADENTRO", "ST_AUTO_SALIENDO", "ST_AUTO_AFUERA", "ST_ERROR", "ST_CAMBIANDO_CLAVE"};
 
-enum events
-{
+volatile enum events {
   EV_PIR_DETECTADO,
   EV_CLAVE_CORRECTA,
   EV_CLAVE_INCORRECTA,
@@ -81,24 +80,26 @@ enum events
   EV_TIMEOUT_CORTO,
   EV_TIMEOUT_LARGO,
   EV_CAMBIO_DE_LUZ,
-
+  EV_CAMBIO_CLAVE,
+  EV_RESET,
 } new_event;
-String events_s[] = {"EV_PIR_DETECTADO", "EV_CLAVE_CORRECTA", "EV_CLAVE_INCORRECTA", "EV_CONTINUE", "EV_TIMEOUT_CORTO", "EV_TIMEOUT_LARGO", "EV_CAMBIO_DE_LUZ"};
+String events_s[] = {"EV_PIR_DETECTADO", "EV_CLAVE_CORRECTA", "EV_CLAVE_INCORRECTA", "EV_CONTINUE", "EV_TIMEOUT_CORTO", "EV_TIMEOUT_LARGO", "EV_CAMBIO_DE_LUZ", "EV_CAMBIO_CLAVE", "EV_RESET"};
 
-#define MAXSTATES 8
-#define MAXEVENTS 7
+#define MAXSTATES 9
+#define MAXEVENTS 9
 
 typedef void (*transition)();
 transition state_table[MAXSTATES][MAXEVENTS] = {
-    // PIR_DETECTADO CLAVE_CORRECTA CLAVE_INCORRECTA CONTINUE TO3 TO10 CAMBIO_DE_LUZ
-    {error, error, error, init_, none, none, none},                                    // STATE INIT
-    {autoSaliendo, autoEntrando, noAutorizado, modoEspera, none, none, modificarTira}, // STATE ESPERA
-    {error, error, error, none, modoEspera, none, modificarTira},                      // STATE NO_AUTORIZADO
-    {autoAdentro, none, none, none, none, none, modificarTira},                        // STATE AUTO_ENTRANDO
-    {none, error, error, modoEspera, none, none, modificarTira},                       // STATE AUTO_ADENTRO
-    {autoSaliendo, error, error, none, none, autoAfuera, modificarTira},               // STATE AUTO_SALIENDO
-    {autoSaliendo, error, error, modoEspera, none, none, modificarTira},               // STATE AUTO_AFUERA
-    {error, error, error, error, error, error, error}                                  // STATE ERROR
+    // PIR_DETECTADO CLAVE_CORRECTA CLAVE_INCORRECTA CONTINUE TO3 TO10 CAMBIO_DE_LUZ CAMBIO_CLAVE RESET
+    {error, error, error, init_, none, none, none, none, none},                                               // STATE INIT
+    {autoSaliendo, autoEntrando, noAutorizado, modoEspera, none, none, modificarTira, cambiandoClave, reset}, // STATE ESPERA
+    {error, error, error, none, modoEspera, none, modificarTira, none, reset},                                // STATE NO_AUTORIZADO
+    {autoAdentro, none, none, none, none, none, modificarTira, none, reset},                                  // STATE AUTO_ENTRANDO
+    {none, error, error, modoEspera, none, none, modificarTira, none, none},                                  // STATE AUTO_ADENTRO
+    {autoSaliendo, error, error, none, none, autoAfuera, modificarTira, none, reset},                         // STATE AUTO_SALIENDO
+    {autoSaliendo, error, error, modoEspera, none, none, modificarTira, none, reset},                         // STATE AUTO_AFUERA
+    {error, error, error, error, error, error, error, error, reset},                                          // STATE ERROR
+    {none, claveModificada, error, none, none, none, none, none, reset},                                      // STATE CAMBIANDO_CLAVE
 };
 
 long lct;      // variable para el contador de tiempo asociado al evento continue
@@ -129,15 +130,15 @@ int brilloPrevioLedAmarillo = 0;
 
 // SECTOR TECLADO
 const byte FILAS = 4;    // define numero de filas
-const byte COLUMNAS = 3; // define numero de columnas
+const byte COLUMNAS = 3; // define numero dEV_CAMBIO_CLAVEe columnas
 char keys[FILAS][COLUMNAS] = {
     {'1', '2', '3'},
     {'4', '5', '6'},
     {'7', '8', '9'},
     {'*', '0', '#'}};
 
-byte pinesFilas[FILAS] = {A1, 8, 7, 0};                                                // pines correspondientes a las filas
-byte pinesColumnas[COLUMNAS] = {6, 5, 4};                                              // pines correspondientes a las columnas
+byte pinesFilas[FILAS] = {A1, A2, A3, 0};                                              // pines correspondientes a las filas
+byte pinesColumnas[COLUMNAS] = {7, 5, 4};                                              // pines correspondientes a las columnas
 Keypad teclado = Keypad(makeKeymap(keys), pinesFilas, pinesColumnas, FILAS, COLUMNAS); // crea objeto teclado con las configuraciones usando Keypad Library
 char TECLA;                                                                            // almacena la tecla presionada
 char CLAVE[5];                                                                         // almacena en un array 9digitos ingresados
@@ -175,6 +176,23 @@ void do_init()
 
   timeout = false;
   lct = millis();
+
+  attachInterrupt(digitalPinToInterrupt(CAMBIAR_CLAVE_PIN), dispararCambiarClave, RISING);
+  attachInterrupt(digitalPinToInterrupt(RESET_PIN), dispararReset, RISING);
+}
+
+void dispararCambiarClave()
+{
+  // Serial.println("Cambio de clave");
+  new_event = EV_CAMBIO_CLAVE;
+  maquinaEstadosEstacionamiento(); // la interrupcion llama a la maquina de estados para moverla desde el evento.
+}
+
+void dispararReset()
+{
+  // Serial.println("Reseteo");
+  new_event = EV_RESET;
+  maquinaEstadosEstacionamiento(); // la interrupcion llama a la maquina de estados para moverla desde el evento.
 }
 
 void bajarBarrera()
@@ -202,7 +220,7 @@ void prenderTiraLed()
   tira.estado = PRENDIDO;
   for (int i = 0; i < LED_TIRA_CANT; i++)
   {
-    tira.LEDs.setPixelColor(i, tira.LEDs.Color(0, 255, 0)); // seteo el color verde con brillo el brillo adecuado
+    tira.LEDs.setPixelColor(i, tira.LEDs.Color(255, 0, 0)); // seteo el color verde con brillo el brillo adecuado GRB
   }
   tira.LEDs.show(); // muestra los cambios
 }
@@ -243,6 +261,13 @@ void ledRGBAmarilloTitilante()
   digitalWrite(LED_RGB_AZUL_PIN, LOW);
 }
 
+void ledRGBAzul()
+{
+  digitalWrite(LED_RGB_ROJO_PIN, LOW);
+  digitalWrite(LED_RGB_VERDE_PIN, LOW);
+  digitalWrite(LED_RGB_AZUL_PIN, HIGH);
+}
+
 void modificarTira()
 {
   !tira.estado ? prenderTiraLed() : apagarTiraLed();
@@ -263,6 +288,20 @@ void modoEspera()
 {
   // DebugPrint("Volviendo a estado de espera");
   ledRGBAmarilloTitilante();
+  current_state = ST_ESPERA;
+}
+
+void cambiandoClave()
+{
+  // DebugPrint("Cambiando clave");
+  ledRGBAzul();
+  current_state = ST_CAMBIANDO_CLAVE;
+}
+
+void claveModificada()
+{
+  // DebugPrint("Clave modificada");
+  ledRGBVerde();
   current_state = ST_ESPERA;
 }
 
@@ -312,6 +351,15 @@ void error()
   current_state = ST_ERROR;
 }
 
+void reset()
+{
+  DebugPrint("Reseteando");
+  ledRGBAmarilloTitilante();
+  apagarIndicadorDeEntradaSalida();
+  bajarBarrera();
+  current_state = ST_ESPERA;
+}
+
 void none()
 {
 }
@@ -319,9 +367,9 @@ void none()
 // ---------------------------------------------
 
 /*
- * Funcion que checkea eventos de clave correcta o incorrecta.
+ * Funcion que checkea eventos de clave correcta o incorrecta. Y modifica clave si el modo es de cambio de clave
  */
-bool verificarClave()
+bool verificarClave(int modoActual)
 {
   TECLA = teclado.getKey(); // obtiene tecla presionada y asigna una variable
   if (TECLA)                // comprueba que se haya presionado una tecla
@@ -332,6 +380,14 @@ bool verificarClave()
   }
   if (INDICE == 4) // si ya se almacenaron los 6 digitos
   {
+    if (modoActual == ST_CAMBIANDO_CLAVE)
+    {
+      strcpy(CLAVE_MAESTRA, CLAVE);
+      DebugPrint("Clave Cambiadas"); // imprime en monitor serial que es correcta la clave mas
+      new_event = EV_CLAVE_CORRECTA;
+      INDICE = 0; // resetea el indice para guardar una nueva clave
+      return true;
+    }
     if (!strcmp(CLAVE, CLAVE_MAESTRA)) // compara clave ingresada con clave maestra
     {
       new_event = EV_CLAVE_CORRECTA; // Evento de auto entrando
@@ -361,10 +417,16 @@ bool verificarSensorPIR()
 
 bool verificarSensorLuz()
 {
-  if (previaLecturaLuz != analogRead(FOTOSENSOR_PIN)) // TODO: remover esta condicion y variable previaLecturaLuz y usar interrupcion
+  if (previaLecturaLuz - SENSOR_LUZ_UMBRAL > 0 && analogRead(FOTOSENSOR_PIN) - SENSOR_LUZ_UMBRAL < 0)
   {
-    previaLecturaLuz = analogRead(FOTOSENSOR_PIN); // TODO: remover esta variable previaLecturaLuz y usar interrupcion
-    new_event = EV_CAMBIO_DE_LUZ;                  // Evento de luz detectada
+    new_event = EV_CAMBIO_DE_LUZ;
+    previaLecturaLuz = analogRead(FOTOSENSOR_PIN);
+    return true;
+  }
+  if (previaLecturaLuz - SENSOR_LUZ_UMBRAL < 0 && analogRead(FOTOSENSOR_PIN) - SENSOR_LUZ_UMBRAL > 0)
+  {
+    new_event = EV_CAMBIO_DE_LUZ;
+    previaLecturaLuz = analogRead(FOTOSENSOR_PIN);
     return true;
   }
 }
@@ -379,6 +441,11 @@ void get_new_event()
   timeout = (diferencia > UMBRAL_DIFERENCIA_TIMEOUT) ? true : false;
   timeoutCorto = (diferenciaCorta > UMBRAL_DIFERENCIA_TIMEOUT_CORTO) ? true : false;
   timeoutLargo = (diferenciaLarga > UMBRAL_DIFERENCIA_TIMEOUT_LARGO) ? true : false;
+
+  if (new_event == EV_CAMBIO_CLAVE || new_event == EV_RESET) // eventos interrupcion
+  {
+    return;
+  }
 
   if (timeoutCorto)
   {
@@ -402,7 +469,7 @@ void get_new_event()
     timeout = false;
     lct = ct;
 
-    if (verificarClave() == true || verificarSensorPIR() == true || verificarSensorLuz() == true)
+    if (verificarClave(current_state) == true || verificarSensorPIR() == true || verificarSensorLuz() == true)
     {
       return;
     }
@@ -426,7 +493,8 @@ void maquinaEstadosEstacionamiento()
   {
     // DebugPrintEstado(states_s[ST_ERROR], events_s[EV_UNKNOW]);
   }
-  // Consumo el evento...
+
+  // Consumo el evento...)
   new_event = EV_CONTINUE;
 }
 
