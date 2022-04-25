@@ -194,256 +194,342 @@ void do_init()
   attachInterrupt(digitalPinToInterrupt(RESET_PIN), dispararReset, RISING); //Attach de la interrupción para el botón de reset.
 }
 
+/*
+ * Se dispara el evento de cambio de clave.
+ */
 void dispararCambiarClave()
 {
   // Serial.println("Cambio de clave");
   new_event = EV_CAMBIO_CLAVE;
-  maquinaEstadosEstacionamiento(); // la interrupcion llama a la maquina de estados para moverla desde el evento.
+  maquinaEstadosEstacionamiento(); // La interrupción ejecuta la maquina de estados para moverla desde el evento.
 }
 
+/*
+ * Se dispara el evento de reset del programa.
+ */
 void dispararReset()
 {
   // Serial.println("Reseteo");
   new_event = EV_RESET;
-  maquinaEstadosEstacionamiento(); // la interrupcion llama a la maquina de estados para moverla desde el evento.
+  maquinaEstadosEstacionamiento(); // La interrupción ejecuta la maquina de estados para moverla desde el evento.
 }
 
+/*
+ * Se realiza la acción de bajar la barrera.
+ */
 void bajarBarrera()
 {
-  servo.write(0);
+  servo.write(0); // Se mueve el servo a 0 grados.
 }
 
+/*
+ * Se realiza la acción de subir la barrera.
+ */
 void subirBarrera()
 {
-  servo.write(90);
+  servo.write(90); // Se mueve el servo a 90 grados.
 }
 
+/*
+ * Se apaga la tira de LEDs.
+ */
 void apagarTiraLed()
 {
-  tira.estado = APAGADO;
-  for (int i = 0; i < LED_TIRA_CANT; i++)
-  {
-    tira.LEDs.setPixelColor(i, tira.LEDs.Color(0, 0, 0)); // seteo el color verde con brillo el brillo adecuado
+  tira.estado = APAGADO; // Set de estado apagado.
+
+  for (int i = 0; i < LED_TIRA_CANT; i++) { // Se recorren todos los LEDs de la tira.
+    tira.LEDs.setPixelColor(i, tira.LEDs.Color(0, 0, 0)); // Set del LED sin color.
   }
-  tira.LEDs.show(); // muestra los cambios
+
+  tira.LEDs.show(); // Se muestran los cambios.
 }
 
+/*
+ * Se prende la tira de LEDs.
+ */
 void prenderTiraLed()
 {
   tira.estado = PRENDIDO;
-  for (int i = 0; i < LED_TIRA_CANT; i++)
-  {
-    tira.LEDs.setPixelColor(i, tira.LEDs.Color(255, 0, 0)); // seteo el color verde con brillo el brillo adecuado GRB
+
+  for (int i = 0; i < LED_TIRA_CANT; i++) { // Se recorren todos los LEDs de la tira.
+    tira.LEDs.setPixelColor(i, tira.LEDs.Color(255, 0, 0)); // Set del LED en color verde. Utiliza configuración (GRB).
   }
-  tira.LEDs.show(); // muestra los cambios
+
+  tira.LEDs.show(); // Se muestran los cambios.
 }
-
-void apagarIndicadorDeEntradaSalida()
-{
-  digitalWrite(LED_VERDE_PIN, LOW);
-}
-
-void encenderIndicadorDeEntradaSalida()
-{
-  digitalWrite(LED_VERDE_PIN, HIGH);
-}
-
-void ledRGBRojo()
-{
-  // digitalWrite(LED_RGB_ROJO_PIN, HIGH);
-  analogWrite(LED_RGB_ROJO_PIN, 255);
-  digitalWrite(LED_RGB_VERDE_PIN, LOW);
-  digitalWrite(LED_RGB_AZUL_PIN, LOW);
-}
-
-void ledRGBVerde()
-{
-  digitalWrite(LED_RGB_ROJO_PIN, LOW);
-  digitalWrite(LED_RGB_VERDE_PIN, HIGH);
-  digitalWrite(LED_RGB_AZUL_PIN, LOW);
-}
-
-void ledRGBAmarilloTitilante()
-{
-  // delayMicroseconds(500);
-  if (brillo_previo_led_amarillo == 256)
-    brillo_previo_led_amarillo = 0;
-  analogWrite(LED_RGB_ROJO_PIN, brillo_previo_led_amarillo);
-  brillo_previo_led_amarillo++;
-  digitalWrite(LED_RGB_VERDE_PIN, HIGH);
-  digitalWrite(LED_RGB_AZUL_PIN, LOW);
-}
-
-void ledRGBAzul()
-{
-  digitalWrite(LED_RGB_ROJO_PIN, LOW);
-  digitalWrite(LED_RGB_VERDE_PIN, LOW);
-  digitalWrite(LED_RGB_AZUL_PIN, HIGH);
-}
-
-void modificarTira()
-{
-  !tira.estado ? prenderTiraLed() : apagarTiraLed();
-}
-
-//----------------------------------------------
-
-void init_()
-{
-  DebugPrintEstado(states_s[current_state], events_s[new_event]);
-  bajarBarrera();
-  apagarTiraLed();
-  apagarIndicadorDeEntradaSalida();
-  current_state = ST_ESPERA;
-}
-
-void modoEspera()
-{
-  // DebugPrint("Volviendo a estado de espera");
-  ledRGBAmarilloTitilante();
-  current_state = ST_ESPERA;
-}
-
-void cambiandoClave()
-{
-  // DebugPrint("Cambiando clave");
-  ledRGBAzul();
-  current_state = ST_CAMBIANDO_CLAVE;
-}
-
-void claveModificada()
-{
-  // DebugPrint("Clave modificada");
-  ledRGBVerde();
-  current_state = ST_ESPERA;
-}
-
-void autoEntrando() // aka contrasenia correcta
-{
-  DebugPrint("Esta entrando un auto");
-  ledRGBVerde();
-  delay(1);
-  encenderIndicadorDeEntradaSalida();
-  subirBarrera();
-  current_state = ST_AUTO_ENTRANDO;
-}
-
-void noAutorizado() // aka contrasenia incorrecta
-{
-  lct_corto = millis(); // reinicio el timeout de 3 segundos
-  ledRGBRojo();
-  current_state = ST_NO_AUTORIZADO;
-}
-
-void autoAdentro()
-{
-  ledRGBAmarilloTitilante();
-  apagarIndicadorDeEntradaSalida();
-  bajarBarrera();
-  current_state = ST_AUTO_ADENTRO;
-}
-
-void autoSaliendo()
-{
-  lct_largo = millis(); // reinicio el timeout de 10 segundos esperando que salga el auto
-  subirBarrera();
-  encenderIndicadorDeEntradaSalida();
-  current_state = ST_AUTO_SALIENDO;
-}
-
-void autoAfuera()
-{
-  apagarIndicadorDeEntradaSalida();
-  bajarBarrera();
-  current_state = ST_AUTO_AFUERA;
-}
-
-void error()
-{
-  ledRGBRojo();
-  current_state = ST_ERROR;
-}
-
-void reset()
-{
-  DebugPrint("Reseteando");
-  ledRGBAmarilloTitilante();
-  apagarIndicadorDeEntradaSalida();
-  bajarBarrera();
-  current_state = ST_ESPERA;
-}
-
-void none()
-{
-}
-
-// ---------------------------------------------
 
 /*
- * Funcion que checkea eventos de clave correcta o incorrecta. Y modifica clave si el modo es de cambio de clave
+ * Se apaga el LED que indica la entrada|salida de un vehículo.
+ */
+void apagarIndicadorDeEntradaSalida()
+{
+  digitalWrite(LED_VERDE_PIN, LOW); // Set de valor 0 para el LED.
+}
+
+/*
+ * Se encender el LED que indica la entrada|salida de un vehículo.
+ */
+void encenderIndicadorDeEntradaSalida()
+{
+  digitalWrite(LED_VERDE_PIN, HIGH); // Set de valor 1 para el LED.
+}
+
+/*
+ * Se enciende el LED color rojo que indica que el vehículo no esta habilitado para ingresar.
+ */
+void ledRGBRojo()
+{
+  analogWrite(LED_RGB_ROJO_PIN, HIGH); // Set máximo color rojo para el LED.
+  digitalWrite(LED_RGB_VERDE_PIN, LOW); // Set mínimo color verde para el LED.
+  digitalWrite(LED_RGB_AZUL_PIN, LOW); // Set mínimo color azul para el LED.
+}
+
+/*
+ * Se enciende el LED color verde que indica que el vehículo esta habilitado para ingresar|salir.
+ */
+void ledRGBVerde()
+{
+  digitalWrite(LED_RGB_ROJO_PIN, LOW); // Set mínimo color rojo para el LED.
+  digitalWrite(LED_RGB_VERDE_PIN, HIGH); // Set máximo color verde para el LED.
+  digitalWrite(LED_RGB_AZUL_PIN, LOW); // Set mínimo color azul para el LED.
+}
+
+/*
+ * Se enciende el LED color amarillo titilante que indica el estado de espera por un vehículo.
+ */
+void ledRGBAmarilloTitilante()
+{
+  if (brillo_previo_led_amarillo == 256) { // Reset del color amarillo. Se utiliza para hacer que el LED titile.
+    brillo_previo_led_amarillo = 0;
+  }
+  
+  analogWrite(LED_RGB_ROJO_PIN, brillo_previo_led_amarillo); // Set de color amarillo.
+
+  brillo_previo_led_amarillo++; // Aumento de intensidad en color amarillo.
+
+  digitalWrite(LED_RGB_VERDE_PIN, HIGH); // Set máximo color verde para el LED.
+  digitalWrite(LED_RGB_AZUL_PIN, LOW); // Set mínimo color azul para el LED.
+}
+
+/*
+ * Se enciende el LED color azul que indica el cambio de contraseña.
+ */
+void ledRGBAzul()
+{
+  digitalWrite(LED_RGB_ROJO_PIN, LOW); // Set mínimo color rojo para el LED.
+  digitalWrite(LED_RGB_VERDE_PIN, LOW); // Set mínimo color verde para el LED.
+  digitalWrite(LED_RGB_AZUL_PIN, HIGH); // Set máximo color azul para el LED.
+}
+
+/*
+ * Se modifica la tira de LED al estado contrario en el que se encuentra.
+ */
+void modificarTira()
+{
+  !tira.estado ? prenderTiraLed() : apagarTiraLed(); // Condicional para saber si prender o apagar la luz. Depende del estado actual.
+}
+
+/*
+ * Inicializó el programa.
+ */
+void init_()
+{
+  bajarBarrera(); // Se baja la barrera.
+  apagarTiraLed(); // Se apaga la tira de LEDs.
+  apagarIndicadorDeEntradaSalida(); // Se apaga el LED indicador de entrada|salida.
+
+  current_state = ST_ESPERA; // Set del estado en espera.
+}
+
+/*
+ * Activo el modo espera.
+ */
+void modoEspera()
+{
+  ledRGBAmarilloTitilante(); // Activo el LED amarillo titilante.
+
+  current_state = ST_ESPERA; // Set del estado en espera.
+}
+
+/*
+ * Activo cambio de clave.
+ */
+void cambiandoClave()
+{
+  ledRGBAzul(); // Activo el LED azul.
+
+  current_state = ST_CAMBIANDO_CLAVE; // Set del estado cambiando de clave.
+}
+
+/*
+ * Activo clave modificada.
+ */
+void claveModificada()
+{
+  ledRGBVerde(); // Activo el LED verde.
+
+  current_state = ST_ESPERA; // Set del estado en espera.
+}
+
+/*
+ * Activo auto entrando.
+ */
+void autoEntrando()
+{
+  ledRGBVerde(); // Activo el LED verde.
+
+  delay(1); // Delay de 1s antes de levantar la barrera.
+
+  encenderIndicadorDeEntradaSalida(); // Activo indicador de ingreso|salida de vehículo.
+  subirBarrera(); // Levanto la barrera.
+
+  current_state = ST_AUTO_ENTRANDO; // Set del estado auto entrando.
+}
+
+/*
+ * Activo vehículo no autorizado.
+ */
+void noAutorizado()
+{
+  lct_corto = millis(); // Reinicio timeout de 3s.
+
+  ledRGBRojo(); // Activo el LED rojo.
+
+  current_state = ST_NO_AUTORIZADO; // Set del estado no autorizado.
+}
+
+/*
+ * Activo vehículo dentro.
+ */
+void autoAdentro()
+{
+  ledRGBAmarilloTitilante(); // Activo el LED amarillo titilante.
+  apagarIndicadorDeEntradaSalida(); // Desactivo indicador de ingreso|salida de vehículo.
+  bajarBarrera(); // Bajo la barrera.
+
+  current_state = ST_AUTO_ADENTRO; // Set del estado auto adentro.
+}
+
+/*
+ * Activo vehículo saliendo.
+ */
+void autoSaliendo()
+{
+  lct_largo = millis(); // Reinicio timeout de 10s. Espera que el auto salga.
+
+  subirBarrera(); // Levanto la barrera.
+  encenderIndicadorDeEntradaSalida(); // Activo indicador de ingreso|salida de vehículo.
+
+  current_state = ST_AUTO_SALIENDO; // Set del estado auto saliendo.
+}
+
+/*
+ * Activo vehículo fuera.
+ */
+void autoAfuera()
+{
+  apagarIndicadorDeEntradaSalida(); // Desactivo indicador de ingreso|salida de vehículo.
+  bajarBarrera(); // Bajo la barrera.
+
+  current_state = ST_AUTO_AFUERA; // Set del estado auto fuera.
+}
+
+/*
+ * Activo error.
+ */
+void error()
+{
+  ledRGBRojo(); // Activo el LED rojo.
+
+  current_state = ST_ERROR; // Set del estado auto fuera.
+}
+
+/*
+ * Activo reset del programa.
+ */
+void reset()
+{
+  ledRGBAmarilloTitilante(); // Activo el LED amarillo titilante.
+  apagarIndicadorDeEntradaSalida(); // Desactivo indicador de ingreso|salida de vehículo.
+  bajarBarrera(); // Bajo la barrera.
+
+  current_state = ST_ESPERA; // Set del estado en espera.
+}
+
+/*
+ * Activo none. Función para realizar un skip de próxima acción.
+ */
+void none() {}
+
+/*
+ * Verifico eventos de clave correcta|incorrecta. Actualiza la clave en caso que el modo sea cambio de clave.
  */
 bool verificarClave(int modoActual)
 {
-  TECLA = teclado.getKey(); // obtiene tecla presionada y asigna una variable
-  if (TECLA)                // comprueba que se haya presionado una tecla
-  {
-    CLAVE[INDICE] = TECLA; // almacena en array la tecla presionada
-    INDICE++;              // incrementa indice en uno
-    DebugPrint(TECLA);     // envia un monitor serial la tecla presionada
-  }
-  if (INDICE == 4) // si ya se almacenaron los 6 digitos
-  {
-    if (modoActual == ST_CAMBIANDO_CLAVE)
-    {
-      strcpy(CLAVE_MAESTRA, CLAVE);
-      DebugPrint("Clave Cambiadas"); // imprime en monitor serial que es correcta la clave mas
-      new_event = EV_CLAVE_CORRECTA;
-      INDICE = 0; // resetea el indice para guardar una nueva clave
-      return true;
-    }
-    if (!strcmp(CLAVE, CLAVE_MAESTRA)) // compara clave ingresada con clave maestra
-    {
-      new_event = EV_CLAVE_CORRECTA; // Evento de auto entrando
-      DebugPrint("Clave Correcta");  // imprime en monitor serial que es correcta la clave mas
-    }
-    else
-    {
-      new_event = EV_CLAVE_INCORRECTA; // Evento de clave incorrecta
-      DebugPrint("Clave Incorrecta");  // imprime en monitor serial que es incorrecta la clave
-    }
+  TECLA = teclado.getKey(); // Set tecla presionada.
 
-    INDICE = 0; // resetea el indice para guardar una nueva clave
+  if (TECLA) {              // Verfico tecla presionada.
+    CLAVE[INDICE] = TECLA;  // Guarda tecla presionada.
+    INDICE++;               // Incremento indice
+  }
+
+  if (INDICE != 4) { // Verifico clave de 4 digitos.
+    return false;
+  }
+
+  if (modoActual == ST_CAMBIANDO_CLAVE) { // Verifico modo cambio de clave.
+    strcpy(CLAVE_MAESTRA, CLAVE); // Guardo nueva clave.
+
+    new_event = EV_CLAVE_CORRECTA; // Set evento clave correcta.
+    INDICE = 0; // Reset del inficio para guardar la clave.
     return true;
   }
-  return false;
+
+  if (!strcmp(CLAVE, CLAVE_MAESTRA)) { //Verifico clave ingresada.
+    new_event = EV_CLAVE_CORRECTA; // Set evento clave correcta.
+  } else {
+    new_event = EV_CLAVE_INCORRECTA; // Set evento clave incorrecta.
+  }
+
+  INDICE = 0; // Reset del inficio para guardar la clave.
+  
+  return true;
 }
 
+/*
+ * Verifico sensor de movimiento PIR.
+ */
 bool verificarSensorPIR()
 {
-  if (digitalRead(PIR_PIN) == HIGH) // si el sensor detecta movimiento
-  {
-    new_event = EV_PIR_DETECTADO; // Evento de movimiento detectado
+  if (digitalRead(PIR_PIN) == HIGH) { // Verifico si el sensor detectó movimiento.
+    new_event = EV_PIR_DETECTADO; // Set evento movimiento detectado.
     return true;
   }
+
   return false;
 }
 
+/*
+ * Verifico fotosensor.
+ */
 bool verificarSensorLuz()
 {
-  if (previa_lectura_luz - SENSOR_LUZ_UMBRAL > 0 && analogRead(FOTOSENSOR_PIN) - SENSOR_LUZ_UMBRAL < 0)
-  {
-    new_event = EV_CAMBIO_DE_LUZ;
-    previa_lectura_luz = analogRead(FOTOSENSOR_PIN);
+  if (
+    (previa_lectura_luz - SENSOR_LUZ_UMBRAL > 0 && analogRead(FOTOSENSOR_PIN) - SENSOR_LUZ_UMBRAL < 0) ||
+    (previa_lectura_luz - SENSOR_LUZ_UMBRAL < 0 && analogRead(FOTOSENSOR_PIN) - SENSOR_LUZ_UMBRAL > 0)
+  ) { // Verifico si hubo un cambio de luz respecto al umbral.
+    new_event = EV_CAMBIO_DE_LUZ; // Set evento cambio de luz.
+    previa_lectura_luz = analogRead(FOTOSENSOR_PIN); // Lectura del fotosensor.
+
     return true;
   }
-  if (previa_lectura_luz - SENSOR_LUZ_UMBRAL < 0 && analogRead(FOTOSENSOR_PIN) - SENSOR_LUZ_UMBRAL > 0)
-  {
-    new_event = EV_CAMBIO_DE_LUZ;
-    previa_lectura_luz = analogRead(FOTOSENSOR_PIN);
-    return true;
-  }
+
+  return false;
 }
 
+/*
+ * Manejador de eventos.
+ */
 void get_new_event()
 {
   long ct = millis();
@@ -455,73 +541,64 @@ void get_new_event()
   timeout_corto = (diferenciaCorta > UMBRAL_DIFERENCIA_TIMEOUT_CORTO) ? true : false;
   timeout_largo = (diferenciaLarga > UMBRAL_DIFERENCIA_TIMEOUT_LARGO) ? true : false;
 
-  if (new_event == EV_CAMBIO_CLAVE || new_event == EV_RESET) // eventos interrupcion
-  {
+  if (new_event == EV_CAMBIO_CLAVE || new_event == EV_RESET) { // Evento de interrupciones
     return;
   }
 
-  if (timeout_corto)
-  {
-    timeout_corto = false;
+  if (timeout_corto) { //Verifico timout de 3s.
+    timeout_corto = false; // Reseteo timeout de 3s.
     lct_corto = ct;
-    new_event = EV_TIMEOUT_CORTO; // genero el evento de timeout 3 segundos
+    new_event = EV_TIMEOUT_CORTO; // Set evento timeout corto (3s).
+
     return;
   }
 
-  if (timeout_largo)
-  {
-    timeout_largo = false;
+  if (timeout_largo) { //Verifico timout de 10s.
+    timeout_largo = false; // Reseteo timeout de 10s.
     lct_largo = ct;
-    new_event = EV_TIMEOUT_LARGO; // genero el evento de timeout 10 segundos
+    new_event = EV_TIMEOUT_LARGO; // Set evento timeout largo (10s).
+
     return;
   }
 
-  if (timeout)
-  {
-    // Doy acuse de la recepcion del timeout
-    timeout = false;
+  if (timeout) { //Verifico timout general.
+    timeout = false; // Reseteo timeout general.
     lct = ct;
 
-    if (verificarClave(current_state) == true || verificarSensorPIR() == true || verificarSensorLuz() == true)
-    {
+    if (verificarClave(current_state) == true || verificarSensorPIR() == true || verificarSensorLuz() == true) { //Verifico eventos de chequeo.
       return;
     }
   }
-  // Genero evento dummy ....
-  new_event = EV_CONTINUE;
+
+  new_event = EV_CONTINUE; // Set evento continue. Dummy event.
 }
 
+/*
+ * Activo máquina de estados.
+ */
 void maquinaEstadosEstacionamiento()
 {
-  get_new_event();
-  if ((new_event >= 0) && (new_event < MAX_EVENTS) && (current_state >= 0) && (current_state < MAX_STATES))
-  {
-    if (new_event != EV_CONTINUE)
-    {
-      DebugPrintEstado(states_s[current_state], events_s[new_event]);
-    }
-    state_table[current_state][new_event]();
-  }
-  else
-  {
-    // DebugPrintEstado(states_s[ST_ERROR], events_s[EV_UNKNOW]);
+  get_new_event(); // Set del evento entrante.
+
+  if ((new_event >= 0) && (new_event < MAX_EVENTS) && (current_state >= 0) && (current_state < MAX_STATES)) { // Verifico evento y estados.
+    state_table[current_state][new_event](); // Acciono evento corespondiente al estado actual.
   }
 
-  // Consumo el evento...)
-  new_event = EV_CONTINUE;
+  new_event = EV_CONTINUE; // Set evento continue. Dummy event.
 }
 
-//----------------------------------------------
-
-// Funciones de arduino !.
-//----------------------------------------------
-
+/*
+ * Setup del Arduino.
+ */
 void setup()
 {
-  do_init();
+  do_init(); // Inicializó programa.
 }
 
+/*
+ * Loop del Arduino.
+ */
 void loop()
 {
-  maquinaEstadosEstacionamiento();
+  maquinaEstadosEstacionamiento(); // Activo máquina de estados.
 }
