@@ -91,17 +91,17 @@ const byte COLUMNAS = 3; // Número de columnas del teclado.
 int previa_lectura_luz = -1; // Variable para manipular la cantidad de luz del fotosensor.
 int brillo_previo_led_amarillo = 0; // Variable para manipular el brillo del LED amarillo.
 
-long lct;      // Variable para el contador de tiempo. Asociada al evento CONTINUE.
-long lct_corto; // Variable para el timeout de 3s. Se inicializa en cero debido a que no se va a ejecutar de no ser necesario.
-long lct_largo; // Variable para el timeout de 10s. Se inicializa en cero debido a que no se va a ejecutar de no ser necesario.
+long lct;      // variable para el contador de tiempo. Asociada al evento CONTINUE.
+long lct_corto; // variable para el timeout de 3s. Se inicializa en cero debido a que no se va a ejecutar de no ser necesario.
+long lct_largo; // variable para el timeout de 10s. Se inicializa en cero debido a que no se va a ejecutar de no ser necesario.
 
-bool timeout; // Variable de decisión asociada al contador de tiempo.
+bool timeout; // variable de decisión asociada al contador de tiempo.
 bool timeout_corto; // Variable de decisión asociada al timeout de 3s.
 bool timeout_largo; // Variable de decisión asociada al timeout de 10s.
 
-char TECLA; // Variable para almacenar la tecla ingresada.
+char TECLA; // variable para almacenar la tecla ingresada.
 char CLAVE[5]; // Array para almacenar la clave ingresada.
-char CLAVE_MAESTRA[5] = "1234"; // Variable con la clave maestra.
+char CLAVE_MAESTRA[5] = "1234"; // variable con la clave maestra.
 char keys[FILAS][COLUMNAS] = { // Array con la definición de las teclas habilitadas.
   {'1', '2', '3'},
   {'4', '5', '6'},
@@ -199,7 +199,6 @@ void do_init()
  */
 void dispararCambiarClave()
 {
-  // Serial.println("Cambio de clave");
   new_event = EV_CAMBIO_CLAVE;
   maquinaEstadosEstacionamiento(); // La interrupción ejecuta la maquina de estados para moverla desde el evento.
 }
@@ -209,7 +208,6 @@ void dispararCambiarClave()
  */
 void dispararReset()
 {
-  // Serial.println("Reseteo");
   new_event = EV_RESET;
   maquinaEstadosEstacionamiento(); // La interrupción ejecuta la maquina de estados para moverla desde el evento.
 }
@@ -279,7 +277,7 @@ void encenderIndicadorDeEntradaSalida()
  */
 void ledRGBRojo()
 {
-  analogWrite(LED_RGB_ROJO_PIN, HIGH); // Set máximo color rojo para el LED.
+  analogWrite(LED_RGB_ROJO_PIN, 255); // Set máximo color rojo para el LED.
   digitalWrite(LED_RGB_VERDE_PIN, LOW); // Set mínimo color verde para el LED.
   digitalWrite(LED_RGB_AZUL_PIN, LOW); // Set mínimo color azul para el LED.
 }
@@ -377,9 +375,6 @@ void claveModificada()
 void autoEntrando()
 {
   ledRGBVerde(); // Activo el LED verde.
-
-  delay(1); // Delay de 1s antes de levantar la barrera.
-
   encenderIndicadorDeEntradaSalida(); // Activo indicador de ingreso|salida de vehículo.
   subirBarrera(); // Levanto la barrera.
 
@@ -532,31 +527,31 @@ bool verificarSensorLuz()
  */
 void get_new_event()
 {
-  long ct = millis();
-  int diferencia = (ct - lct);
-  int diferenciaCorta = (ct - lct_corto);
-  int diferenciaLarga = (ct - lct_largo);
+  long ct = millis(); // Inicializo contador de current time.
+  int diferencia = (ct - lct); // Diferencia de timeout genérico.
+  int diferenciaCorta = (ct - lct_corto); // Diferencia de timeout corto.
+  int diferenciaLarga = (ct - lct_largo); // Diferencia de timeout largo.
 
-  timeout = (diferencia > UMBRAL_DIFERENCIA_TIMEOUT) ? true : false;
-  timeout_corto = (diferenciaCorta > UMBRAL_DIFERENCIA_TIMEOUT_CORTO) ? true : false;
-  timeout_largo = (diferenciaLarga > UMBRAL_DIFERENCIA_TIMEOUT_LARGO) ? true : false;
+  timeout = (diferencia > UMBRAL_DIFERENCIA_TIMEOUT); // Activar de timeout genérico.
+  timeout_corto = (diferenciaCorta > UMBRAL_DIFERENCIA_TIMEOUT_CORTO); // Activar de timeout corto.
+  timeout_largo = (diferenciaLarga > UMBRAL_DIFERENCIA_TIMEOUT_LARGO); // Activar de timeout largo.
 
   if (new_event == EV_CAMBIO_CLAVE || new_event == EV_RESET) { // Evento de interrupciones
     return;
   }
 
-  if (timeout_corto) { //Verifico timout de 3s.
-    timeout_corto = false; // Reseteo timeout de 3s.
+  if (timeout_corto) { //Verifico timout corto.
+    timeout_corto = false; // Reseteo timeout corto.
     lct_corto = ct;
-    new_event = EV_TIMEOUT_CORTO; // Set evento timeout corto (3s).
+    new_event = EV_TIMEOUT_CORTO; // Set evento timeout corto.
 
     return;
   }
 
-  if (timeout_largo) { //Verifico timout de 10s.
-    timeout_largo = false; // Reseteo timeout de 10s.
+  if (timeout_largo) { //Verifico timout largo.
+    timeout_largo = false; // Reseteo timeout largo.
     lct_largo = ct;
-    new_event = EV_TIMEOUT_LARGO; // Set evento timeout largo (10s).
+    new_event = EV_TIMEOUT_LARGO; // Set evento timeout largo.
 
     return;
   }
@@ -581,6 +576,10 @@ void maquinaEstadosEstacionamiento()
   get_new_event(); // Set del evento entrante.
 
   if ((new_event >= 0) && (new_event < MAX_EVENTS) && (current_state >= 0) && (current_state < MAX_STATES)) { // Verifico evento y estados.
+    if (new_event != EV_CONTINUE) { // Verifico evento distinto de continue.
+      DebugPrintEstado(states_s[current_state], events_s[new_event]); // Muestro estado y evento.
+    }
+
     state_table[current_state][new_event](); // Acciono evento corespondiente al estado actual.
   }
 
