@@ -44,9 +44,10 @@
 
 /* ---------- Sección de constantes ---------- */
 #define SERIAL_BAUD_RATE 9600
-#define UMBRAL_DIFERENCIA_TIMEOUT 40             // Timeout para verificación genérica.
-#define UMBRAL_DIFERENCIA_TIMEOUT_CORTO 3 * 1000 // Timeout de 3s para control de error de contraseña.
-#define UMBRAL_DIFERENCIA_TIMEOUT_LARGO 5 * 1000 // Timeout de 10s para control de cierre de barrera.
+#define UMBRAL_DIFERENCIA_TECLADO 20              // Timeout para pulling teclado.
+#define UMBRAL_DIFERENCIA_TIMEOUT 700             // Timeout para verificación genérica.
+#define UMBRAL_DIFERENCIA_TIMEOUT_CORTO 5 * 1000  // Timeout de 3s para control de error de contraseña.
+#define UMBRAL_DIFERENCIA_TIMEOUT_LARGO 10 * 1000 // Timeout de 10s para control de cierre de barrera.
 
 #define APAGADO 0             // Valor para apagar la tira de LED.
 #define PRENDIDO 1            // Valor para encender la tira de LED.
@@ -68,7 +69,6 @@ enum states
   ST_AUTO_SALIENDO,
   ST_AUTO_AFUERA,
   ST_ERROR,
-  ST_CAMBIANDO_CLAVE,
 } current_state;
 
 volatile enum events {
@@ -91,17 +91,20 @@ const byte COLUMNAS = 3; // Número de columnas del teclado.
 int previa_lectura_luz = -1;        // Variable para manipular la cantidad de luz del fotosensor.
 int brillo_previo_led_amarillo = 0; // Variable para manipular el brillo del LED amarillo.
 
-long lct;       // Variable para el contador de tiempo. Asociada al evento CONTINUE.
-long lct_corto; // Variable para el timeout de 3s. Se inicializa en cero debido a que no se va a ejecutar de no ser necesario.
-long lct_largo; // Variable para el timeout de 10s. Se inicializa en cero debido a que no se va a ejecutar de no ser necesario.
+long lct;         // Variable para el contador de tiempo. Asociada al evento CONTINUE.
+long lct_corto;   // Variable para el timeout de 3s. Se inicializa en cero debido a que no se va a ejecutar de no ser necesario.
+long lct_largo;   // Variable para el timeout de 10s. Se inicializa en cero debido a que no se va a ejecutar de no ser necesario.
+long lct_teclado; // Variable para el timeout de pulling teclado. Se inicializa en cero debido a que no se va a ejecutar de no ser necesario.
 
-bool timeout;       // Variable de decisión asociada al contador de tiempo.
-bool timeout_corto; // Variable de decisión asociada al timeout de 3s.
-bool timeout_largo; // Variable de decisión asociada al timeout de 10s.
+bool timeout;         // Variable de decisión asociada al contador de tiempo.
+bool timeout_corto;   // Variable de decisión asociada al timeout de 3s.
+bool timeout_largo;   // Variable de decisión asociada al timeout de 10s.
+bool timeout_teclado; // Variable de decisión asociada al timeout del teclado.
 
 char TECLA;                     // Variable para almacenar la tecla ingresada.
 char CLAVE[5];                  // Array para almacenar la clave ingresada.
 char CLAVE_MAESTRA[5] = "1234"; // Variable con la clave maestra.
+char NUEVA_CLAVE[5];            // Array para almacenar la nueva clave ingresada.
 char keys[FILAS][COLUMNAS] = {  // Array con la definición de las teclas habilitadas.
     {'1', '2', '3'},
     {'4', '5', '6'},
@@ -116,8 +119,7 @@ String states_s[] = { // Vector de estados.
     "ST_AUTO_ADENTRO",
     "ST_AUTO_SALIENDO",
     "ST_AUTO_AFUERA",
-    "ST_ERROR",
-    "ST_CAMBIANDO_CLAVE"};
+    "ST_ERROR"};
 
 String events_s[] = { // Vector de eventos.
     "EV_PIR_DETECTADO",
@@ -139,13 +141,12 @@ transition state_table[MAX_STATES][MAX_EVENTS] = {
     // Matriz para vincular estados y eventos.
     {error, error, error, init_, none, none, none, none, none},                                               // STATE INIT
     {autoSaliendo, autoEntrando, noAutorizado, modoEspera, none, none, modificarTira, cambiandoClave, reset}, // STATE ESPERA
-    {error, error, error, none, modoEspera, none, modificarTira, none, reset},                                // STATE NO_AUTORIZADO
+    {none, none, none, none, modoEspera, none, modificarTira, none, reset},                                   // STATE NO_AUTORIZADO
     {autoAdentro, none, none, none, none, none, modificarTira, none, reset},                                  // STATE AUTO_ENTRANDO
     {none, error, error, modoEspera, none, none, modificarTira, none, none},                                  // STATE AUTO_ADENTRO
     {autoSaliendo, error, error, none, none, autoAfuera, modificarTira, none, reset},                         // STATE AUTO_SALIENDO
     {autoSaliendo, error, error, modoEspera, none, none, modificarTira, none, reset},                         // STATE AUTO_AFUERA
     {error, error, error, error, error, error, error, error, reset},                                          // STATE ERROR
-    {none, claveModificada, error, none, none, none, none, none, reset},                                      // STATE CAMBIANDO_CLAVE
 };
 // {PIR_DETECTADO, CLAVE_CORRECTA, CLAVE_INCORRECTA, CONTINUE, TO3, TO10, CAMBIO_DE_LUZ, CAMBIO_CLAVE, RESET}
 /* ---------- Fin máquina de estados ---------- */
@@ -187,27 +188,6 @@ void do_init()
 
   timeout = false; // Set del timeout general.
   lct = millis();  // Inicializo los milisegundos.
-
-  attachInterrupt(digitalPinToInterrupt(CAMBIAR_CLAVE_PIN), dispararCambiarClave, RISING); // Attach de la interrupción para el botón de cambio de clave.
-  attachInterrupt(digitalPinToInterrupt(RESET_PIN), dispararReset, RISING);                // Attach de la interrupción para el botón de reset.
-}
-
-/*
- * Se dispara el evento de cambio de clave.
- */
-void dispararCambiarClave()
-{
-  new_event = EV_CAMBIO_CLAVE;
-  maquinaEstadosEstacionamiento(); // La interrupción ejecuta la maquina de estados para moverla desde el evento.
-}
-
-/*
- * Se dispara el evento de reset del programa.
- */
-void dispararReset()
-{
-  new_event = EV_RESET;
-  maquinaEstadosEstacionamiento(); // La interrupción ejecuta la maquina de estados para moverla desde el evento.
 }
 
 /*
@@ -231,12 +211,11 @@ void subirBarrera()
  */
 void apagarTiraLed()
 {
-  tira.estado = APAGADO; // Set de estado apagado.
-
-  for (int i = 0; i < LED_TIRA_CANT; i++)
-  {                                                       // Se recorren todos los LEDs de la tira.
-    tira.LEDs.setPixelColor(i, tira.LEDs.Color(0, 0, 0)); // Set del LED sin color.
-  }
+  tira.estado = APAGADO;                                // Set de estado apagado.
+  tira.LEDs.setPixelColor(0, tira.LEDs.Color(0, 0, 0)); // Set del LED sin color.
+  tira.LEDs.setPixelColor(1, tira.LEDs.Color(0, 0, 0)); // Set del LED sin color.
+  tira.LEDs.setPixelColor(2, tira.LEDs.Color(0, 0, 0)); // Set del LED sin color.
+  tira.LEDs.setPixelColor(3, tira.LEDs.Color(0, 0, 0)); // Set del LED sin color.
 
   tira.LEDs.show(); // Se muestran los cambios.
 }
@@ -247,12 +226,10 @@ void apagarTiraLed()
 void prenderTiraLed()
 {
   tira.estado = PRENDIDO;
-
-  for (int i = 0; i < LED_TIRA_CANT; i++)
-  {                                                         // Se recorren todos los LEDs de la tira.
-    tira.LEDs.setPixelColor(i, tira.LEDs.Color(255, 0, 0)); // Set del LED en color verde. Utiliza configuración (GRB).
-  }
-
+  tira.LEDs.setPixelColor(0, tira.LEDs.Color(255, 0, 0)); // Set del LED en color verde. Utiliza configuración (GRB).
+  tira.LEDs.setPixelColor(1, tira.LEDs.Color(255, 0, 0));
+  tira.LEDs.setPixelColor(2, tira.LEDs.Color(255, 0, 0));
+  tira.LEDs.setPixelColor(3, tira.LEDs.Color(255, 0, 0));
   tira.LEDs.show(); // Se muestran los cambios.
 }
 
@@ -277,7 +254,7 @@ void encenderIndicadorDeEntradaSalida()
  */
 void ledRGBRojo()
 {
-  analogWrite(LED_RGB_ROJO_PIN, 255); // Set máximo color rojo para el LED.
+  analogWrite(LED_RGB_ROJO_PIN, 255);   // Set máximo color rojo para el LED.
   digitalWrite(LED_RGB_VERDE_PIN, LOW); // Set mínimo color verde para el LED.
   digitalWrite(LED_RGB_AZUL_PIN, LOW);  // Set mínimo color azul para el LED.
 }
@@ -355,17 +332,12 @@ void modoEspera()
  */
 void cambiandoClave()
 {
-  ledRGBAzul(); // Activo el LED azul.
-
-  current_state = ST_CAMBIANDO_CLAVE; // Set del estado cambiando de clave.
-}
-
-/*
- * Activo clave modificada.
- */
-void claveModificada()
-{
-  ledRGBVerde(); // Activo el LED verde.
+  ledRGBAzul();                       // Activo el LED azul.
+  strcpy(CLAVE_MAESTRA, NUEVA_CLAVE); // Guardo nueva clave.
+  INDICE = 0;                         // Reset del indice para guardar la clave.
+  ledRGBAmarilloTitilante();          // Activo el LED amarillo titilante.
+  apagarIndicadorDeEntradaSalida();   // Desactivo indicador de ingreso|salida de vehículo.
+  bajarBarrera();                     // Bajo la barrera.
 
   current_state = ST_ESPERA; // Set del estado en espera.
 }
@@ -375,7 +347,7 @@ void claveModificada()
  */
 void autoEntrando()
 {
-  ledRGBVerde(); // Activo el LED verde.
+  ledRGBVerde();                      // Activo el LED verde.
   encenderIndicadorDeEntradaSalida(); // Activo indicador de ingreso|salida de vehículo.
   subirBarrera();                     // Levanto la barrera.
 
@@ -448,6 +420,8 @@ void reset()
   ledRGBAmarilloTitilante();        // Activo el LED amarillo titilante.
   apagarIndicadorDeEntradaSalida(); // Desactivo indicador de ingreso|salida de vehículo.
   bajarBarrera();                   // Bajo la barrera.
+  memset(CLAVE, 0, sizeof(CLAVE));  // reseteo clave ingresada
+  INDICE = 0;                       // reseteo indice
 
   current_state = ST_ESPERA; // Set del estado en espera.
 }
@@ -460,12 +434,13 @@ void none() {}
 /*
  * Verifico eventos de clave correcta|incorrecta. Actualiza la clave en caso que el modo sea cambio de clave.
  */
-bool verificarClave(int modoActual)
+bool verificarClave()
 {
   TECLA = teclado.getKey(); // Set tecla presionada.
 
   if (TECLA)
   {                        // Verfico tecla presionada.
+    DebugPrint(TECLA);     // Imprimo tecla presionada.
     CLAVE[INDICE] = TECLA; // Guarda tecla presionada.
     INDICE++;              // Incremento indice
   }
@@ -473,15 +448,6 @@ bool verificarClave(int modoActual)
   if (INDICE != 4)
   { // Verifico clave de 4 digitos.
     return false;
-  }
-
-  if (modoActual == ST_CAMBIANDO_CLAVE)
-  {                               // Verifico modo cambio de clave.
-    strcpy(CLAVE_MAESTRA, CLAVE); // Guardo nueva clave.
-
-    new_event = EV_CLAVE_CORRECTA; // Set evento clave correcta.
-    INDICE = 0;                    // Reset del inficio para guardar la clave.
-    return true;
   }
 
   if (!strcmp(CLAVE, CLAVE_MAESTRA))
@@ -531,39 +497,68 @@ bool verificarSensorLuz()
 }
 
 /*
+ * Verifico entrada serial.
+ */
+bool verificarSerial()
+{
+  if (Serial.available() > 0) // Verifico si hay datos en la entrada serial.
+  {
+    String data = Serial.readStringUntil('\n'); // Leo datos del serial.
+    if (data.indexOf("cambiarClave") != -1)     // Verifico si es cambio de clave.
+    {
+      String parametro = data.substring(13, 17); // Set nueva clave.
+      strcpy(NUEVA_CLAVE, parametro.c_str());    // Guarda nueva clave.
+      new_event = EV_CAMBIO_CLAVE;               // Set evento cambio de clave.
+      return true;
+    }
+    if (data.indexOf("reset") != -1) // Verifico si reset
+    {
+      new_event = EV_RESET; // Set evento reset.
+      return true;
+    }
+  }
+  return false;
+}
+
+/*
  * Manejador de eventos.
  */
 void get_new_event()
 {
-  long ct = millis(); // Inicializo contador de current time.
-  int diferencia = (ct - lct); // Diferencia de timeout genérico.
-  int diferenciaCorta = (ct - lct_corto); // Diferencia de timeout corto.
-  int diferenciaLarga = (ct - lct_largo); // Diferencia de timeout largo.
+  long ct = millis();                                             // Inicializo contador de current time.
+  int pollingTeclado = (ct - lct_teclado);                        // Diferencia de timeout largo.
+  timeout_teclado = (pollingTeclado > UMBRAL_DIFERENCIA_TECLADO); // Lectura de teclado.
 
-  timeout = (diferencia > UMBRAL_DIFERENCIA_TIMEOUT); // Activar de timeout genérico.
+  if (timeout_teclado) // polling rapido de teclado para evitar que no se presione la tecla.
+  {
+    timeout = false; // Reseteo timeout general.
+    lct_teclado = ct;
+    if (verificarClave() == true) // verificar clave de teclado
+    {
+      return;
+    }
+  }
+
+  int diferencia = (ct - lct);                                         // Diferencia de timeout genérico.
+  int diferenciaCorta = (ct - lct_corto);                              // Diferencia de timeout corto.
+  int diferenciaLarga = (ct - lct_largo);                              // Diferencia de timeout largo.
+  timeout = (diferencia > UMBRAL_DIFERENCIA_TIMEOUT);                  // Activar de timeout genérico.
   timeout_corto = (diferenciaCorta > UMBRAL_DIFERENCIA_TIMEOUT_CORTO); // Activar de timeout corto.
   timeout_largo = (diferenciaLarga > UMBRAL_DIFERENCIA_TIMEOUT_LARGO); // Activar de timeout largo.
 
-  if (new_event == EV_CAMBIO_CLAVE || new_event == EV_RESET)
-  { // Evento de interrupciones
-    return;
-  }
-
-  if (timeout_corto) //Verifico timout corto.
-  { 
+  if (timeout_corto) // Verifico timout corto.
+  {
     timeout_corto = false; // Reseteo timeout corto.
     lct_corto = ct;
     new_event = EV_TIMEOUT_CORTO; // Set evento timeout corto.
-
     return;
   }
 
-  if (timeout_largo) //Verifico timout largo.
+  if (timeout_largo) // Verifico timout largo.
   {
     timeout_largo = false; // Reseteo timeout largo.
     lct_largo = ct;
     new_event = EV_TIMEOUT_LARGO; // Set evento timeout largo.
-
     return;
   }
 
@@ -572,7 +567,7 @@ void get_new_event()
     timeout = false; // Reseteo timeout general.
     lct = ct;
 
-    if (verificarClave(current_state) == true || verificarSensorPIR() == true || verificarSensorLuz() == true)
+    if (verificarSensorPIR() == true || verificarSensorLuz() == true || verificarSerial() == true)
     { // Verifico eventos de chequeo.
       return;
     }
@@ -589,11 +584,12 @@ void maquinaEstadosEstacionamiento()
   get_new_event(); // Set del evento entrante.
 
   if ((new_event >= 0) && (new_event < MAX_EVENTS) && (current_state >= 0) && (current_state < MAX_STATES)) // Verifico evento y estados.
-  {                                         
-    if (new_event != EV_CONTINUE) { // Verifico evento distinto de continue.
+  {
+    if (new_event != EV_CONTINUE)
+    {                                                                 // Verifico evento distinto de continue.
       DebugPrintEstado(states_s[current_state], events_s[new_event]); // Muestro estado y evento.
     }
-    
+
     state_table[current_state][new_event](); // Acciono evento corespondiente al estado actual.
   }
 
