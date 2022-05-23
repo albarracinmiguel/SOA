@@ -212,7 +212,7 @@ void do_init()
  */
 void bajarBarrera()
 {
-  servo.write(BARRERA_ABIERTA); // Se mueve el servo a 0 grados.
+  servo.write(BARRERA_CERRADA); // Se mueve el servo a 0 grados.
 }
 
 /*
@@ -220,7 +220,7 @@ void bajarBarrera()
  */
 void subirBarrera()
 {
-  servo.write(BARRERA_CERRADA); // Se mueve el servo a 90 grados.
+  servo.write(BARRERA_ABIERTA); // Se mueve el servo a 90 grados.
 }
 
 /*
