@@ -30,7 +30,6 @@
 /* ---------- Fin sección de debug ---------- */
 
 /* ---------- Sección de pines ---------- */
-#define CAMBIAR_CLAVE_PIN 2
 #define SERVO_PIN 6
 #define LED_VERDE_PIN 8
 #define LED_RGB_AZUL_PIN 9
@@ -51,29 +50,29 @@
 #define APAGADO 0             // Valor para apagar la tira de LED.
 #define PRENDIDO 1            // Valor para encender la tira de LED.
 #define LED_TIRA_CANT 4       // Cantidad de LEDs de tira.
-#define DIFERENCIA_SENSOR_LUZ_UMBRAL = 0; // Límite de diferencia entre luz led y umbral del sensor de luz.
+#define DIFERENCIA_SENSOR_LUZ_UMBRAL 0 // Límite de diferencia entre luz led y umbral del sensor de luz.
 #define SENSOR_LUZ_UMBRAL 800 // Valor arbitrario para el encendido y apagado de la tira LED.
 
-#define MIN_STATES = 0; // Minima cantidad de estados.
+#define MIN_STATES 0 // Minima cantidad de estados.
 #define MAX_STATES 9 // Máxima cantidad de estados.
 
-#define MIN_EVENT = 0; // Minima cantidad de eventos
+#define MIN_EVENT 0 // Minima cantidad de eventos
 #define MAX_EVENTS 9 // Máxima cantidad de eventos.
 
-#define BARRERA_CERRADA = 0; // Grados de la barrera cerrada para el servo.
-#define BARRERA_ABIERTA = 90; // Grados de la barrera abierta para el servo.
+#define BARRERA_CERRADA 0 // Grados de la barrera cerrada para el servo.
+#define BARRERA_ABIERTA 90 // Grados de la barrera abierta para el servo.
 
-#define BRILLO_MINIMO_LED = 0; // Brillo minimo de un led.
-#define BRILLO_MAXIMO_LED = 255; // Brillo máximo de un led.
+#define BRILLO_MINIMO_LED 0 // Brillo minimo de un led.
+#define BRILLO_MAXIMO_LED 255 // Brillo máximo de un led.
 
-#define INICIO_NUEVA_CLAVE = 13; // Valor del indice de comienzo de la nueva clave.
-#define FIN_NUEVA_CLAVE = 17; // Valor del indice de fin de la nueva clave
+#define INICIO_NUEVA_CLAVE 13 // Valor del indice de comienzo de la nueva clave.
+#define FIN_NUEVA_CLAVE 17 // Valor del indice de fin de la nueva clave
 
-#define VERIFICACION_ENTRADA_SERIAL = 0; // Valor de verificación de si se ingreso algún dato serial.
-#define VERIFICACION_ACCION_TECLADO = -1; // Valor de verificación para saber si se realizo una acción de cambio de clave o reset.
+#define VERIFICACION_ENTRADA_SERIAL 0 // Valor de verificación de si se ingreso algún dato serial.
+#define VERIFICACION_ACCION_TECLADO -1 // Valor de verificación para saber si se realizo una acción de cambio de clave o reset.
 
-#define MIN_INDICE = 0; // Valor minimo del indice para el cambio de clave o reset.
-#define MAX_INDICE = 4; // Valor máximo para el indice de cambio de clave o reset.
+#define MIN_INDICE 0 // Valor minimo del indice para el cambio de clave o reset.
+#define MAX_INDICE 4 // Valor máximo para el indice de cambio de clave o reset.
 /* ---------- Fin sección de constantes ---------- */
 
 /* ---------- Sección de estructuras de datos ---------- */
