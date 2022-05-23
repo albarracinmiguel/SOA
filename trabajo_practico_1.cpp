@@ -31,7 +31,6 @@
 
 /* ---------- Sección de pines ---------- */
 #define CAMBIAR_CLAVE_PIN 2
-#define RESET_PIN 3
 #define SERVO_PIN 6
 #define LED_VERDE_PIN 8
 #define LED_RGB_AZUL_PIN 9
@@ -52,10 +51,29 @@
 #define APAGADO 0             // Valor para apagar la tira de LED.
 #define PRENDIDO 1            // Valor para encender la tira de LED.
 #define LED_TIRA_CANT 4       // Cantidad de LEDs de tira.
+#define DIFERENCIA_SENSOR_LUZ_UMBRAL = 0; // Límite de diferencia entre luz led y umbral del sensor de luz.
 #define SENSOR_LUZ_UMBRAL 800 // Valor arbitrario para el encendido y apagado de la tira LED.
 
-#define MAX_STATES 9 // Máxima cantidad de estados
+#define MIN_STATES = 0; // Minima cantidad de estados.
+#define MAX_STATES 9 // Máxima cantidad de estados.
+
+#define MIN_EVENT = 0; // Minima cantidad de eventos
 #define MAX_EVENTS 9 // Máxima cantidad de eventos.
+
+#define BARRERA_CERRADA = 0; // Grados de la barrera cerrada para el servo.
+#define BARRERA_ABIERTA = 90; // Grados de la barrera abierta para el servo.
+
+#define BRILLO_MINIMO_LED = 0; // Brillo minimo de un led.
+#define BRILLO_MAXIMO_LED = 255; // Brillo máximo de un led.
+
+#define INICIO_NUEVA_CLAVE = 13; // Valor del indice de comienzo de la nueva clave.
+#define FIN_NUEVA_CLAVE = 17; // Valor del indice de fin de la nueva clave
+
+#define VERIFICACION_ENTRADA_SERIAL = 0; // Valor de verificación de si se ingreso algún dato serial.
+#define VERIFICACION_ACCION_TECLADO = -1; // Valor de verificación para saber si se realizo una acción de cambio de clave o reset.
+
+#define MIN_INDICE = 0; // Valor minimo del indice para el cambio de clave o reset.
+#define MAX_INDICE = 4; // Valor máximo para el indice de cambio de clave o reset.
 /* ---------- Fin sección de constantes ---------- */
 
 /* ---------- Sección de estructuras de datos ---------- */
@@ -195,7 +213,7 @@ void do_init()
  */
 void bajarBarrera()
 {
-  servo.write(0); // Se mueve el servo a 0 grados.
+  servo.write(BARRERA_ABIERTA); // Se mueve el servo a 0 grados.
 }
 
 /*
@@ -203,7 +221,7 @@ void bajarBarrera()
  */
 void subirBarrera()
 {
-  servo.write(90); // Se mueve el servo a 90 grados.
+  servo.write(BARRERA_CERRADA); // Se mueve el servo a 90 grados.
 }
 
 /*
@@ -211,11 +229,11 @@ void subirBarrera()
  */
 void apagarTiraLed()
 {
-  tira.estado = APAGADO;                                // Set de estado apagado.
-  tira.LEDs.setPixelColor(0, tira.LEDs.Color(0, 0, 0)); // Set del LED sin color.
-  tira.LEDs.setPixelColor(1, tira.LEDs.Color(0, 0, 0)); // Set del LED sin color.
-  tira.LEDs.setPixelColor(2, tira.LEDs.Color(0, 0, 0)); // Set del LED sin color.
-  tira.LEDs.setPixelColor(3, tira.LEDs.Color(0, 0, 0)); // Set del LED sin color.
+  tira.estado = APAGADO;  // Set de estado apagado.
+  for (size_t i = 0; i < LED_TIRA_CANT; i++)
+  {
+    tira.LEDs.setPixelColor(i, tira.LEDs.Color(BRILLO_MINIMO_LED, BRILLO_MINIMO_LED, BRILLO_MINIMO_LED)); // Set del LED sin color.
+  }
 
   tira.LEDs.show(); // Se muestran los cambios.
 }
@@ -225,11 +243,12 @@ void apagarTiraLed()
  */
 void prenderTiraLed()
 {
-  tira.estado = PRENDIDO;
-  tira.LEDs.setPixelColor(0, tira.LEDs.Color(255, 0, 0)); // Set del LED en color verde. Utiliza configuración (GRB).
-  tira.LEDs.setPixelColor(1, tira.LEDs.Color(255, 0, 0));
-  tira.LEDs.setPixelColor(2, tira.LEDs.Color(255, 0, 0));
-  tira.LEDs.setPixelColor(3, tira.LEDs.Color(255, 0, 0));
+  tira.estado = PRENDIDO; // Set de estado prendido.
+  for (size_t i = 0; i < LED_TIRA_CANT; i++)
+  {
+    tira.LEDs.setPixelColor(i, tira.LEDs.Color(BRILLO_MAXIMO_LED, BRILLO_MINIMO_LED, BRILLO_MINIMO_LED)); // Set del LED sin color.
+  }
+
   tira.LEDs.show(); // Se muestran los cambios.
 }
 
@@ -254,7 +273,7 @@ void encenderIndicadorDeEntradaSalida()
  */
 void ledRGBRojo()
 {
-  analogWrite(LED_RGB_ROJO_PIN, 255);   // Set máximo color rojo para el LED.
+  analogWrite(LED_RGB_ROJO_PIN, BRILLO_MAXIMO_LED);   // Set máximo color rojo para el LED.
   digitalWrite(LED_RGB_VERDE_PIN, LOW); // Set mínimo color verde para el LED.
   digitalWrite(LED_RGB_AZUL_PIN, LOW);  // Set mínimo color azul para el LED.
 }
@@ -274,9 +293,9 @@ void ledRGBVerde()
  */
 void ledRGBAmarilloTitilante()
 {
-  if (brillo_previo_led_amarillo == 256)
+  if (brillo_previo_led_amarillo == BRILLO_MAXIMO_LED)
   { // Reset del color amarillo. Se utiliza para hacer que el LED titile.
-    brillo_previo_led_amarillo = 0;
+    brillo_previo_led_amarillo = BRILLO_MINIMO_LED;
   }
 
   analogWrite(LED_RGB_ROJO_PIN, brillo_previo_led_amarillo); // Set de color amarillo.
@@ -420,8 +439,8 @@ void reset()
   ledRGBAmarilloTitilante();        // Activo el LED amarillo titilante.
   apagarIndicadorDeEntradaSalida(); // Desactivo indicador de ingreso|salida de vehículo.
   bajarBarrera();                   // Bajo la barrera.
-  memset(CLAVE, 0, sizeof(CLAVE));  // reseteo clave ingresada
-  INDICE = 0;                       // reseteo indice
+  memset(CLAVE, MIN_INDICE, sizeof(CLAVE));  // reseteo clave ingresada
+  INDICE = MIN_INDICE;                       // reseteo indice
 
   current_state = ST_ESPERA; // Set del estado en espera.
 }
@@ -438,15 +457,15 @@ bool verificarClave()
 {
   TECLA = teclado.getKey(); // Set tecla presionada.
 
-  if (TECLA)
-  {                        // Verfico tecla presionada.
+  if (TECLA) // Verfico tecla presionada.
+  {                        
     DebugPrint(TECLA);     // Imprimo tecla presionada.
     CLAVE[INDICE] = TECLA; // Guarda tecla presionada.
     INDICE++;              // Incremento indice
   }
 
-  if (INDICE != 4)
-  { // Verifico clave de 4 digitos.
+  if (INDICE != MAX_INDICE) // Verifico clave de 4 digitos.
+  { 
     return false;
   }
 
@@ -459,7 +478,7 @@ bool verificarClave()
     new_event = EV_CLAVE_INCORRECTA; // Set evento clave incorrecta.
   }
 
-  INDICE = 0; // Reset del inficio para guardar la clave.
+  INDICE = MIN_INDICE; // Reset del inficio para guardar la clave.
 
   return true;
 }
@@ -484,8 +503,8 @@ bool verificarSensorPIR()
 bool verificarSensorLuz()
 {
   if (
-      (previa_lectura_luz - SENSOR_LUZ_UMBRAL > 0 && analogRead(FOTOSENSOR_PIN) - SENSOR_LUZ_UMBRAL < 0) ||
-      (previa_lectura_luz - SENSOR_LUZ_UMBRAL < 0 && analogRead(FOTOSENSOR_PIN) - SENSOR_LUZ_UMBRAL > 0))
+      (previa_lectura_luz - SENSOR_LUZ_UMBRAL > DIFERENCIA_SENSOR_LUZ_UMBRAL && analogRead(FOTOSENSOR_PIN) - SENSOR_LUZ_UMBRAL < DIFERENCIA_SENSOR_LUZ_UMBRAL) ||
+      (previa_lectura_luz - SENSOR_LUZ_UMBRAL < DIFERENCIA_SENSOR_LUZ_UMBRAL && analogRead(FOTOSENSOR_PIN) - SENSOR_LUZ_UMBRAL > DIFERENCIA_SENSOR_LUZ_UMBRAL))
   {                                                  // Verifico si hubo un cambio de luz respecto al umbral.
     new_event = EV_CAMBIO_DE_LUZ;                    // Set evento cambio de luz.
     previa_lectura_luz = analogRead(FOTOSENSOR_PIN); // Lectura del fotosensor.
@@ -501,17 +520,17 @@ bool verificarSensorLuz()
  */
 bool verificarSerial()
 {
-  if (Serial.available() > 0) // Verifico si hay datos en la entrada serial.
+  if (Serial.available() > VERIFICACION_ENTRADA_SERIAL) // Verifico si hay datos en la entrada serial.
   {
     String data = Serial.readStringUntil('\n'); // Leo datos del serial.
-    if (data.indexOf("cambiarClave") != -1)     // Verifico si es cambio de clave.
+    if (data.indexOf("cambiarClave") != VERIFICACION_ACCION_TECLADO)     // Verifico si es cambio de clave.
     {
-      String parametro = data.substring(13, 17); // Set nueva clave.
+      String parametro = data.substring(INICIO_NUEVA_CLAVE, FIN_NUEVA_CLAVE); // Set nueva clave.
       strcpy(NUEVA_CLAVE, parametro.c_str());    // Guarda nueva clave.
       new_event = EV_CAMBIO_CLAVE;               // Set evento cambio de clave.
       return true;
     }
-    if (data.indexOf("reset") != -1) // Verifico si reset
+    if (data.indexOf("reset") != VERIFICACION_ACCION_TECLADO) // Verifico si reset
     {
       new_event = EV_RESET; // Set evento reset.
       return true;
@@ -583,7 +602,7 @@ void maquinaEstadosEstacionamiento()
 {
   get_new_event(); // Set del evento entrante.
 
-  if ((new_event >= 0) && (new_event < MAX_EVENTS) && (current_state >= 0) && (current_state < MAX_STATES)) // Verifico evento y estados.
+  if ((new_event >= MIN_EVENT) && (new_event < MAX_EVENTS) && (current_state >= MIN_STATES) && (current_state < MAX_STATES)) // Verifico evento y estados.
   {
     if (new_event != EV_CONTINUE)
     {                                                                 // Verifico evento distinto de continue.
